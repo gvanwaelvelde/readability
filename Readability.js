@@ -435,6 +435,11 @@ Readability.prototype = {
     node.readability = {"contentScore": 0};
 
     switch(node.tagName) {
+      case 'MAIN':
+      case 'ARTICLE':
+        node.readability.contentScore += 10;
+        break;
+
       case 'DIV':
         node.readability.contentScore += 5;
         break;
@@ -464,6 +469,13 @@ Readability.prototype = {
       case 'H6':
       case 'TH':
         node.readability.contentScore -= 5;
+        break;
+    }
+
+    switch(node.getAttribute("role")) {
+      case 'article':
+      case 'main':
+        node.readability.contentScore += 10;
         break;
     }
 
@@ -573,6 +585,24 @@ Readability.prototype = {
     // Check if any "dir" is set on the toplevel document element
     this._articleDir = doc.documentElement.getAttribute("dir");
 
+    // Trying to identify any obvious natural candidate
+    var naturalCandidate;
+    var articleTags = doc.getElementsByTagName("article");
+    // XXX: find a fast way to identify role="article" single element
+    if (articleTags.length === 1) {
+      naturalCandidate = articleTags[0];
+    } else {
+      var mainTags = doc.getElementsByTagName("main");
+      // XXX: find a fast way to identify role="main" single element
+      if (mainTags.length === 1)
+        naturalCandidate = mainTags[0];
+    }
+    if (naturalCandidate) {
+      // So we've found a natural candidate, let's alter the current document NO
+      doc.body.innerHTML = "";
+      doc.body.appendChild(naturalCandidate);
+    }
+
     while (true) {
       var stripUnlikelyCandidates = this._flagIsActive(this.FLAG_STRIP_UNLIKELYS);
 
@@ -603,7 +633,7 @@ Readability.prototype = {
           }
         }
 
-        if (node.tagName === "P" || node.tagName === "TD" || node.tagName === "PRE")
+        if (["MAIN", "ARTICLE", "SECTION", "P", "TD", "PRE"].indexOf(node.tagName) !== -1)
           elementsToScore.push(node);
 
         // Turn all divs that don't have children block level elements into p's
@@ -623,11 +653,17 @@ Readability.prototype = {
             // EXPERIMENTAL
             this._forEachNode(node.childNodes, function(childNode) {
               if (childNode.nodeType === Node.TEXT_NODE) {
-                var p = doc.createElement('p');
-                p.textContent = childNode.textContent;
-                p.style.display = 'inline';
-                p.className = 'readability-styled';
-                node.replaceChild(p, childNode);
+                var textContent = childNode.textContent.trim();
+                if (textContent) {
+                  var p = doc.createElement('p');
+                  p.textContent = childNode.textContent;
+                  p.style.display = 'inline';
+                  p.className = 'readability-styled';
+                  node.replaceChild(p, childNode);
+                } else {
+                  // remove empty text nodes
+                  node.removeChild(childNode);
+                }
               }
             });
           }
